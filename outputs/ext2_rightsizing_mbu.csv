@@ -1,0 +1,3 @@
+gpu_id,workload,current_gpu,recommended_gpu,current_hr,recommended_hr,current_usd_per_gb_vram,recommended_usd_per_gb_vram,max_mem_used_gb,avg_bw_tbs,monthly_savings,reason
+gpu-a10g-0,infer,A10G,L4,1.0,0.8,0.0417,0.0333,20.3,0.141,144,Observed inference/embed usage fits cheaper GPU with VRAM and bandwidth headroom
+gpu-a10g-1,infer,A10G,L4,1.0,0.8,0.0417,0.0333,20.4,0.181,144,Observed inference/embed usage fits cheaper GPU with VRAM and bandwidth headroom

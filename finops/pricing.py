@@ -1,4 +1,4 @@
-"""Pricing & purchasing economics — measure in $/1M-token, not $/GPU-hr.
+﻿"""Pricing & purchasing economics - measure in $/1M-token, not $/GPU-hr.
 
 Figures are June-2026 as-of snapshots from the deck's RESEARCH dossier; treat
 live prices as fast-moving (re-baseline before each cohort).
@@ -42,7 +42,7 @@ def discount_stack(
     batch_discount: float = 0.50,
     cache_discount: float = 0.10,
 ) -> float:
-    """Effective fraction of the naive bill after stacking discounts (input-heavy view).
+    """Effective fraction of the naive bill after stacking discounts.
 
     Discounts MULTIPLY: cache applies to the cached share of input, batch to the
     whole bill. batch + 100% cache-hit -> 0.5 * 0.1 = 0.05 (~95% off).
@@ -60,18 +60,110 @@ def break_even_utilization(discount_frac: float) -> float:
     return max(0.0, min(1.0, 1.0 - discount_frac))
 
 
-def recommend_tier(hours_per_day: float, interruptible: bool, reserved_discount: float = 0.45) -> str:
-    """Pick a purchasing tier from a workload's duty cycle + interruptibility.
+# Extension 1: GPU-specific spot interruption assumptions.
+SPOT_INTERRUPTION_RATES = {
+    "H100": 0.03,
+    "H200": 0.04,
+    "A100": 0.05,
+    "A10G": 0.08,
+    "L4": 0.06,
+    "B200": 0.04,
+    "MI300X": 0.07,
+}
 
-    DOCUMENTED simple policy (instructor extension point — swap in your own):
-      - interruptible & not 24/7  -> 'spot'      (checkpoint and ride the discount)
-      - duty cycle >= break-even  -> 'reserved'  (steady, high utilization)
-      - otherwise                 -> 'on_demand' (spiky / low duty)
+
+def spot_interruption_rate(gpu_type: str | None, default: float = 0.05) -> float:
+    """Return expected hourly spot interruption rate for a GPU type."""
+    if not gpu_type:
+        return default
+    return SPOT_INTERRUPTION_RATES.get(str(gpu_type), default)
+
+
+def recommend_reserved_term(
+    hours_per_day: float,
+    expected_months: float | None = None,
+    reserved_1yr_discount: float = 0.20,
+    reserved_3yr_discount: float = 0.45,
+) -> dict:
+    """Compare 1yr vs 3yr reserved plans using duty cycle and expected duration.
+
+    Returns a small decision record. The main tier remains "reserved" so the
+    original lab API stays compatible, while this function explains whether
+    1yr, 3yr, or on-demand is the safer commitment.
+    """
+    duty = max(0.0, hours_per_day) / 24.0
+    be_1yr = break_even_utilization(reserved_1yr_discount)
+    be_3yr = break_even_utilization(reserved_3yr_discount)
+
+    months = 36.0 if expected_months is None else max(0.0, float(expected_months))
+
+    if duty < be_3yr:
+        return {
+            "term": "on_demand",
+            "discount": 0.0,
+            "break_even_util": round(be_3yr, 3),
+            "reason": "duty cycle below 3yr break-even",
+        }
+
+    if months >= 24:
+        return {
+            "term": "reserved_3yr",
+            "discount": reserved_3yr_discount,
+            "break_even_util": round(be_3yr, 3),
+            "reason": "stable long-lived workload; 3yr has better hourly rate",
+        }
+
+    if months >= 12 and duty >= be_1yr:
+        return {
+            "term": "reserved_1yr",
+            "discount": reserved_1yr_discount,
+            "break_even_util": round(be_1yr, 3),
+            "reason": "medium duration workload; 1yr limits commitment risk",
+        }
+
+    return {
+        "term": "on_demand",
+        "discount": 0.0,
+        "break_even_util": round(be_3yr, 3),
+        "reason": "duration too short for reserved commitment",
+    }
+
+
+def recommend_tier(
+    hours_per_day: float,
+    interruptible: bool,
+    reserved_discount: float = 0.45,
+    gpu_type: str | None = None,
+    job_days: float | None = None,
+    expected_months: float | None = None,
+    max_spot_interrupt_rate: float = 0.10,
+) -> str:
+    """Pick a purchasing tier from duty cycle, interruptibility, and commitment risk.
+
+    Backward-compatible behavior is preserved:
+      - interruptible & not 24/7  -> 'spot'
+      - duty cycle >= break-even  -> 'reserved'
+      - otherwise                 -> 'on_demand'
+
+    Extension behavior:
+      - GPU-specific spot interruption rate blocks overly risky spot choices.
+      - expected_months can force a reserved duration comparison before committing.
     """
     duty = max(0.0, hours_per_day) / 24.0
     be = break_even_utilization(reserved_discount)
+
     if interruptible and hours_per_day < 24:
-        return "spot"
+        intr = spot_interruption_rate(gpu_type)
+        if intr <= max_spot_interrupt_rate:
+            return "spot"
+        return "on_demand"
+
+    if expected_months is not None:
+        term = recommend_reserved_term(hours_per_day, expected_months)
+        if term["term"].startswith("reserved"):
+            return "reserved"
+        return "on_demand"
+
     if duty >= be:
         return "reserved"
     return "on_demand"
@@ -81,7 +173,7 @@ def spot_checkpoint_cost(
     job_hours: float,
     spot_hr: float,
     on_demand_hr: float,
-    interrupt_rate: float = 0.05,      # per-hour chance (H100 spot ~<5%)
+    interrupt_rate: float = 0.05,      # per-hour chance
     ckpt_overhead_frac: float = 0.03,  # steady cost of writing checkpoints
     rework_hours_per_interrupt: float = 0.5,
 ) -> dict:
@@ -102,3 +194,24 @@ def spot_checkpoint_cost(
         "on_demand_cost": round(on_demand_cost, 2),
         "savings_pct": round(savings_pct, 1),
     }
+
+def cache_break_even_reads(write_cost: float, read_discount: float = 0.10) -> float:
+    """Minimum repeated reads needed for prompt cache to pay back its write cost.
+
+    We model write_cost as a multiple of the normal input-token price.
+    Each cached read saves (1 - read_discount) of the normal input-token price.
+    Example: write_cost=1.25 and read_discount=0.10 -> 1.25 / 0.90 = 1.39 reads.
+    """
+    saved_per_read = max(0.0, 1.0 - read_discount)
+    if saved_per_read <= 0:
+        return float("inf")
+    return write_cost / saved_per_read
+
+
+def cache_is_worth_it(
+    avg_cache_reads: float,
+    write_cost: float,
+    read_discount: float = 0.10,
+) -> bool:
+    """Return True when repeated cached reads pay back the cache write cost."""
+    return avg_cache_reads >= cache_break_even_reads(write_cost, read_discount)

@@ -1,0 +1,6 @@
+job_id,team,kind,gpu_type,num_gpus,kwh,baseline_region,cleanest_region,baseline_cost_usd,clean_region_cost_usd,baseline_carbon_gco2e,clean_region_carbon_gco2e,carbon_saved_gco2e,carbon_reduction_pct
+job-train-llm,rag,train,H100,8,1568.0,us-east-1,europe-north1,188.16,141.12,595840.0,47040.0,548800.0,92.1
+job-train-embed,search,train,A100,4,80.0,us-east-1,europe-north1,9.6,7.2,30400.0,2400.0,28000.0,92.1
+job-finetune,assistant,train,H100,2,25.2,us-east-1,europe-north1,3.024,2.268,9576.0,756.0,8820.0,92.1
+job-dev-sandbox,eval,dev,A10G,2,52.8,us-east-1,europe-north1,6.336,4.752,20064.0,1584.0,18480.0,92.1
+job-batch-eval,eval,infer,H100,1,63.0,us-east-1,europe-north1,7.56,5.67,23940.0,1890.0,22050.0,92.1

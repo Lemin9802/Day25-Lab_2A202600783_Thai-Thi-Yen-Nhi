@@ -1,0 +1,3 @@
+tier,requests,input_tokens,cached_tokens,uncached_tokens,avg_cache_reads,write_cost_mult,break_even_reads,cache_is_worth_it
+large,498,1108481,353070,755411,0.467,1.25,1.389,False
+small,1902,4234956,1350920,2884036,0.468,1.25,1.389,False

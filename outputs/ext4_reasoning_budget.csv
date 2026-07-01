@@ -1,0 +1,3 @@
+bucket,requests,tokens,cost_daily,wh_daily,extra_cost_daily,extra_wh_daily
+reasoning,201,1241156,1.408,29787.744,1.0279,29610.1377
+non_reasoning,2199,6291871,8.2506,1887.5613,0.0,0.0
