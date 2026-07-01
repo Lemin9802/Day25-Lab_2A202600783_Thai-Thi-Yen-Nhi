@@ -21,7 +21,7 @@ The final result is a monthly cost optimization report showing:
 
 | Item | File |
 |---|---|
-| Final submission summary | [LAB25_SUBMISSION_SUMMARY.md](LAB25_SUBMISSION_SUMMARY.md) |
+| Final submission summary | [SUBMISSION_SUMMARY.md](SUBMISSION_SUMMARY.md) |
 | Final cost report | [outputs/report.md](outputs/report.md) |
 | Savings chart | [outputs/savings.png](outputs/savings.png) |
 | Final full run log | [outputs/final_run_all.log](outputs/final_run_all.log) |
